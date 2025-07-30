@@ -1,0 +1,107 @@
+import React, { useState, useEffect } from 'react';
+import { ethers } from 'ethers';
+
+// Replace with your contract address and ABI
+const CONTRACT_ADDRESS = '0xYourContractAddressHere';
+const CONTRACT_ABI = [
+  // minimal ABI example:
+  "function addResume(address user, string memory resumeHash) public",
+  "function getResume(address user) public view returns (string memory)"
+];
+
+export default function ResumeVerification() {
+  const [account, setAccount] = useState(null);
+  const [resumeHash, setResumeHash] = useState('');
+  const [storedResume, setStoredResume] = useState('');
+  const [contract, setContract] = useState(null);
+  const [provider, setProvider] = useState(null);
+
+  // Connect wallet and set contract
+  async function connectWallet() {
+    if (!window.ethereum) {
+      alert('Please install MetaMask!');
+      return;
+    }
+
+    const prov = new ethers.providers.Web3Provider(window.ethereum);
+    await prov.send("eth_requestAccounts", []);
+    const signer = prov.getSigner();
+    const userAddress = await signer.getAddress();
+
+    const resumeContract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+
+    setProvider(prov);
+    setAccount(userAddress);
+    setContract(resumeContract);
+  }
+
+  // Submit resume hash to blockchain
+  async function submitResume() {
+    if (!contract) {
+      alert('Contract not loaded!');
+      return;
+    }
+    try {
+      const tx = await contract.addResume(account, resumeHash);
+      await tx.wait();
+      alert('Resume submitted on blockchain!');
+    } catch (err) {
+      console.error(err);
+      alert('Error submitting resume');
+    }
+  }
+
+  // Fetch resume hash from blockchain for current account
+  async function fetchResume() {
+    if (!contract) {
+      alert('Contract not loaded!');
+      return;
+    }
+    try {
+      const resume = await contract.getResume(account);
+      setStoredResume(resume);
+    } catch (err) {
+      console.error(err);
+      alert('Error fetching resume');
+    }
+  }
+
+  // Auto-fetch resume on account change
+  useEffect(() => {
+    if (contract && account) {
+      fetchResume();
+    }
+  }, [contract, account]);
+
+  return (
+    <div style={{ padding: '2rem', fontFamily: 'Arial' }}>
+      <h1>Decentralized Resume Verification</h1>
+
+      {!account ? (
+        <button onClick={connectWallet}>Connect Wallet</button>
+      ) : (
+        <>
+          <p><strong>Connected Account:</strong> {account}</p>
+
+          <div>
+            <h3>Submit Resume/Skill Hash</h3>
+            <input
+              type="text"
+              placeholder="Enter resume hash (IPFS or text)"
+              value={resumeHash}
+              onChange={(e) => setResumeHash(e.target.value)}
+              style={{ width: '300px', marginRight: '10px' }}
+            />
+            <button onClick={submitResume}>Submit</button>
+          </div>
+
+          <div style={{ marginTop: '2rem' }}>
+            <h3>Your Stored Resume Hash</h3>
+            <p>{storedResume || 'No resume found on blockchain.'}</p>
+            <button onClick={fetchResume}>Refresh Resume</button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
